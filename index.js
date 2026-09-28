@@ -4,7 +4,7 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 const TELEGRAM_TOKEN = '8923020145:AAHGNflNNkj7AzQLXFxiq1i5YAdKA9Shy0o';
-const GEMINI_API_KEY = 'AQ.Ab8RN6LeN3DygGo5_Q9CCC_tEJsTx_0ic2WIoXXM82msDDuhCg';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const WEBHOOK_URL = 'https://openclaw-bot-4idd.onrender.com/webhook';
 
 app.use(express.json());
@@ -20,7 +20,6 @@ app.post('/webhook', async (req, res) => {
     const userText = message.text;
 
     try {
-      // إرسال النص إلى Gemini API
       const geminiResponse = await axios.post(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
         {
@@ -30,7 +29,6 @@ app.post('/webhook', async (req, res) => {
 
       const aiReply = geminiResponse.data.candidates[0].content.parts[0].text;
 
-      // إرسال رد الذكاء الاصطناعي للمستخدم في تيليجرام
       await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
         chat_id: chatId,
         text: aiReply
