@@ -22,7 +22,7 @@ app.post('/telegram-webhook', async (req, res) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
-    // استدعاء مباشر ومضمون بنسبة 100% لموديل gemini-2.5-flash
+    // استدعاء مباشر ومضمون للنموذج
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const response = await axios.post(geminiUrl, {
@@ -31,7 +31,7 @@ app.post('/telegram-webhook', async (req, res) => {
 
     const aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "عذراً، لم أستطع معالجة الطلب حالياً.";
 
-    // إرسال الرد إلى تلغرام
+    // إرسال الرد المباشر إلى تلغرام
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: aiReply,
