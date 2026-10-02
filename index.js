@@ -22,8 +22,8 @@ app.post('/telegram-webhook', async (req, res) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
-    // تحديث الرابط إلى الموديل الجديد gemini-3.0-flash
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // المسار المباشر المعتمد
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const response = await axios.post(geminiUrl, {
       contents: [{ parts: [{ text: userText }] }]
