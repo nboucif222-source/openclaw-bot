@@ -1,20 +1,18 @@
 const express = require('express');
 const axios = require('axios');
-const { GoogleGenAI } = require('@google/genai');
 
 const app = express();
 app.use(express.json());
 
-// تهيئة Gemini API والتوكن من متغيرات البيئة
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 app.get('/', (req, res) => {
   res.send('my OpenClaw bot is Active and Ready!');
 });
 
 app.post('/telegram-webhook', async (req, res) => {
-  // إرجاع 200 فوراً لتليجرام لتجنب إعادة الطلب
+  // إرجاع 200 OK فوراً لتلغرام
   res.sendStatus(200);
 
   try {
@@ -24,16 +22,14 @@ app.post('/telegram-webhook', async (req, res) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
-    // استدعاء موديل Gemini
-    const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
-      contents: userText,
-      config: {
-        systemInstruction: "أنت مساعد ذكي ونشط يعمل كـ AI Agent تنفذ الأوامر بدقة وبأسلوب مباشر.",
-      }
+    // استدعاء Gemini API مباشرة عبر HTTP Post
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    
+    const response = await axios.post(geminiUrl, {
+      contents: [{ parts: [{ text: userText }] }]
     });
 
-    const aiReply = response.text || "عذراً، لم أستطع معالجة الطلب حالياً.";
+    const aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "عذراً، لم أستطع معالجة الطلب حالياً.";
 
     // إرسال الرد المباشر إلى تلغرام
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
@@ -41,7 +37,7 @@ app.post('/telegram-webhook', async (req, res) => {
       text: aiReply,
     });
   } catch (error) {
-    console.error('Error handling Telegram Webhook:', error.message);
+    console.error('Error handling Telegram Webhook:', error.response?.data || error.message);
   }
 });
 
