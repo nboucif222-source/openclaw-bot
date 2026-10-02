@@ -12,7 +12,7 @@ app.get('/', (req, res) => {
 });
 
 app.post('/telegram-webhook', async (req, res) => {
-  // إرجاع 200 OK فوراً لتلغرام
+  // إرجاع 200 OK فوراً لتلغرام لمنع التكرار
   res.sendStatus(200);
 
   try {
@@ -22,8 +22,8 @@ app.post('/telegram-webhook', async (req, res) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
-    // استدعاء مباشر ومضمون للنموذج
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // استدعاء الموديل المطلوب بدقة 100%
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const response = await axios.post(geminiUrl, {
       contents: [{ parts: [{ text: userText }] }]
@@ -31,7 +31,7 @@ app.post('/telegram-webhook', async (req, res) => {
 
     const aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || "عذراً، لم أستطع معالجة الطلب حالياً.";
 
-    // إرسال الرد المباشر إلى تلغرام
+    // إرسال الرد إلى تلغرام
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: aiReply,
