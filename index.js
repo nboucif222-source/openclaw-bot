@@ -12,7 +12,7 @@ app.get('/', (req, res) => {
 });
 
 app.post('/telegram-webhook', async (req, res) => {
-  // إرجاع 200 OK فوراً لتلغرام
+  // إرجاع 200 OK فوراً لتلغرام لمنع مهلة الانتظار
   res.sendStatus(200);
 
   try {
@@ -22,8 +22,8 @@ app.post('/telegram-webhook', async (req, res) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
-    // المسار المباشر المعتمد
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    // استخدام الموديل المستقر gemini-2.0-flash المعتمد في REST API
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
     
     const response = await axios.post(geminiUrl, {
       contents: [{ parts: [{ text: userText }] }]
