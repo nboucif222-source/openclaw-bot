@@ -1,24 +1,22 @@
 const express = require('express');
-const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+
+const app = express();
+app.use(express.json());
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// خادم Express لإبقاء Render نشطاً
-const app = express();
-app.get('/', (req, res) => res.send('Bot is running...'));
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
+app.get('/', (req, res) => res.send('Docker Webhook Bot is Live!'));
 
-// تشغيل البوت بنظام Long Polling
-const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+app.post('/webhook', async (req, res) => {
+  res.sendStatus(200);
 
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  const userText = msg.text;
+  const message = req.body?.message;
+  if (!message || !message.text) return;
 
-  if (!userText) return;
+  const chatId = message.chat.id;
+  const userText = message.text;
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -27,8 +25,15 @@ bot.on('message', async (msg) => {
     });
 
     const reply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام رد.';
-    await bot.sendMessage(chatId, reply);
+
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: reply
+    });
   } catch (error) {
     console.error('Error:', error.response?.data || error.message);
   }
 });
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
