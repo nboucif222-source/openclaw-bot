@@ -1,21 +1,24 @@
 const express = require('express');
+const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
-
-const app = express();
-app.use(express.json());
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// معالجة الرسائل القادمة من تليجرام
-async function handleUpdate(req, res) {
-  res.sendStatus(200); // رد سريع لتليجرام لتجنب إعادة الإرسال
+// 1. خادم Express لإبقاء Render نشطاً
+const app = express();
+app.get('/', (req, res) => res.send('Bot is running...'));
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 
-  const message = req.body?.message;
-  if (!message || !message.text) return;
+// 2. تشغيل البوت بنظام Long Polling لتفادي مشاكل Webhook
+const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
-  const chatId = message.chat.id;
-  const userText = message.text;
+bot.on('message', async (msg) => {
+  const chatId = msg.chat.id;
+  const userText = msg.text;
+
+  if (!userText) return;
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -24,22 +27,8 @@ async function handleUpdate(req, res) {
     });
 
     const reply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام رد.';
-
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-      chat_id: chatId,
-      text: reply
-    });
+    await bot.sendMessage(chatId, reply);
   } catch (error) {
     console.error('Error:', error.response?.data || error.message);
   }
-}
-
-// مسار UptimeRobot
-app.get('/', (req, res) => res.send('Bot is Live!'));
-
-// استقبال الرسائل سواء أرسلها تليجرام على / أو على /webhook
-app.post('/', handleUpdate);
-app.post('/webhook', handleUpdate);
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+});
