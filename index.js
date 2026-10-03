@@ -21,8 +21,7 @@ bot.on('message', async (msg) => {
   if (!userText) return;
 
   try {
-    // الرابط المحدث بالإصدار الصحيح
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
     const response = await axios.post(url, {
       contents: [{ parts: [{ text: userText }] }]
     });
