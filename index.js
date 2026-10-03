@@ -1,5 +1,6 @@
 const express = require('express');
 const axios = require('axios');
+const { GoogleGenAI } = require('@google/genai');
 
 const app = express();
 app.use(express.json());
@@ -7,42 +8,47 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// دالة المعالجة
-async function handleMessage(req, res) {
-  // 1. إرسال رد سريع لتليجرام لمنع الـ Timeout
-  res.sendStatus(200);
+// تهيئة مكتبة Google Gen AI الحديثة المتوافقة مع كافة أنواع المفاتيح
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
-  const message = req.body?.message;
-  if (!message || !message.text) return;
+// 1. مسار الصفحة الرئيسية لـ UptimeRobot
+app.get('/', (req, res) => {
+  res.status(200).send('Bot is Live!');
+});
 
-  const chatId = message.chat.id;
-  const userText = message.text;
+// 2. مسار استقبال تحديثات تليجرام (يشمل / و /webhook)
+async function handleUpdate(req, res) {
+  res.sendStatus(200); // إجابة سريعة لتليجرام لمنع الـ Timeout
 
   try {
-    // 2. استدعاء Gemini API
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-    const geminiRes = await axios.post(geminiUrl, {
-      contents: [{ parts: [{ text: userText }] }]
+    const message = req.body?.message;
+    if (!message || !message.text) return;
+
+    const chatId = message.chat.id;
+    const userText = message.text;
+
+    // استدعاء موديل gemini-2.5-flash باستخدام المكتبة الحديثة
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: userText,
     });
 
-    const reply = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || "عذراً، لم أستطع معالجة النص.";
+    const reply = response.text || 'لم أتمكن من الحصول على رد.';
 
-    // 3. إرسال الرد لتليجرام
+    // إرسال الرد لتليجرام
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: reply
     });
-  } catch (err) {
-    console.error('Error:', err.message);
+  } catch (error) {
+    console.error('Error in handling update:', error.message || error);
   }
 }
 
-// مسار UptimeRobot
-app.get('/', (req, res) => res.send('Bot is Live!'));
-
-// استلام تحديثات تليجرام على كل من / و /webhook لتفادي أي 404
-app.post('/', handleMessage);
-app.post('/webhook', handleMessage);
+app.post('/', handleUpdate);
+app.post('/webhook', handleUpdate);
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+});
