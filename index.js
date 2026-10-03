@@ -112,9 +112,6 @@ app.all('*', async (req, res) => {
         { role: 'user', parts: currentParts }
       ]
     };
-
-    let aiReply = "";
-    try {
       let aiReply = "";
     try {
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
@@ -124,13 +121,6 @@ app.all('*', async (req, res) => {
       console.error('Gemini API Error:', apiError?.response?.data || apiError.message);
       aiReply = "عذراً، حدث خطأ أثناء معالجة الصورة أو النص. يرجى المحاولة مرة أخرى.";
     }
-      const response = await axios.post(geminiUrl, geminiPayload);
-      aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    } catch (apiError) {
-      console.error('Gemini API Error:', apiError?.response?.data || apiError.message);
-      aiReply = "⚠️️ حدث خطأ أثناء تحليل الصورة/الطلب، الرجاء إعادة المحاولة بنفس الصورة أو التأكد من سلامة المفتاح GEMINI_API_KEY.";
-    }
-
     if (aiReply) {
       history.push({ role: 'user', parts: currentParts });
       history.push({ role: 'model', parts: [{ text: aiReply }] });
