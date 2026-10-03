@@ -115,29 +115,15 @@ app.all('*', async (req, res) => {
 
     let aiReply = "";
     try {
-      // استخدام النموذج المعتمد حديثاً gemini-3.8-flash مع وضع نماذج احتياطية
-const modelsToTry = [
-  'gemini-3.8-flash',
-  'gemini-3.7-flash',
-  'gemini-3.6-flash'
-];
-
-let aiReply = "";
-
-for (const modelName of modelsToTry) {
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
-  try {
-    const response = await axios.post(geminiUrl, geminiPayload);
-    aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (aiReply) break; // تم الحصول على الإجابة بنجاح
-  } catch (err) {
-    console.log(`Failed with model ${modelName}, trying next...`);
-  }
-}
-
-if (!aiReply) {
-  aiReply = "⚠️ تعذر الاتصال بنماذج الذكاء الاصطناعي، يرجى التحقق من المفتاح GEMINI_API_KEY.";
-}
+      let aiReply = "";
+    try {
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const response = await axios.post(geminiUrl, geminiPayload);
+      aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    } catch (apiError) {
+      console.error('Gemini API Error:', apiError?.response?.data || apiError.message);
+      aiReply = "عذراً، حدث خطأ أثناء معالجة الصورة أو النص. يرجى المحاولة مرة أخرى.";
+    }
       const response = await axios.post(geminiUrl, geminiPayload);
       aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
     } catch (apiError) {
