@@ -7,14 +7,15 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// مسار الصفحة الرئيسية لخدمة UptimeRobot
+// 1. مسار GET للصفحة الرئيسية (لكي يعمل UptimeRobot بدون 502)
 app.get('/', (req, res) => {
   res.status(200).send('OpenClaw Bot is Live!');
 });
 
-// مسار Webhook
+// 2. مسار POST الرئيسي الذي ينتظره تيليجرام (يصلح خطأ 404)
 app.post('/', async (req, res) => {
-  res.sendStatus(200); // رد سريع لمنع Timeout
+  // رد سريع برمز 200 لتأكيد الاستلام فوراً
+  res.sendStatus(200);
 
   try {
     const message = req.body?.message;
@@ -23,7 +24,7 @@ app.post('/', async (req, res) => {
     const chatId = message.chat.id;
     const userText = message.text;
 
-    // استدعاء Gemini API مباشرة عبر Axios
+    // طلب الاستجابة من Gemini API
     const geminiRes = await axios.post(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
@@ -31,16 +32,16 @@ app.post('/', async (req, res) => {
       }
     );
 
-    const reply = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'عذراً، لم أستطع فهم الإجابة.';
+    const reply = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام رد من النموذج.';
 
-    // إرسال الرد لتليجرام
+    // إرسال الرد إلى تيليجرام
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: reply
     });
 
   } catch (error) {
-    console.error('Error:', error.response?.data || error.message);
+    console.error('Error during webhook processing:', error.response?.data || error.message);
   }
 });
 
