@@ -115,7 +115,29 @@ app.all('*', async (req, res) => {
 
     let aiReply = "";
     try {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      // قائمة بالنماذج المتاحة للتجربة بالتتابع في حال فشل أحدها
+const modelsToTry = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash'
+];
+
+let aiReply = "";
+
+for (const modelName of modelsToTry) {
+  try {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+    const response = await axios.post(geminiUrl, geminiPayload);
+    aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (aiReply) break; // إذا نجح الطلب نخرج من الحلقة
+  } catch (err) {
+    console.log(`Failed with model ${modelName}, trying next...`);
+  }
+}
+
+if (!aiReply) {
+  aiReply = "⚠ تعذر الاتصال بجميع نماذج الذكاء الاصطناعي. يرجى التأكد من صلاحية المفتاح GEMINI_API_KEY.";
+}
       const response = await axios.post(geminiUrl, geminiPayload);
       aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
     } catch (apiError) {
