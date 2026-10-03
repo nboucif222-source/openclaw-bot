@@ -7,45 +7,39 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// 1. مسار GET للصفحة الرئيسية (لكي يعمل UptimeRobot بدون 502)
+// 1. مسار الصفحة الرئيسية (استجابة لـ UptimeRobot)
 app.get('/', (req, res) => {
-  res.status(200).send('OpenClaw Bot is Live!');
+  res.send('Bot is running');
 });
 
-// 2. مسار POST الرئيسي الذي ينتظره تيليجرام (يصلح خطأ 404)
+// 2. مسار استقبال رسائل تليجرام الرئيسي (POST /)
 app.post('/', async (req, res) => {
-  // رد سريع برمز 200 لتأكيد الاستلام فوراً
+  // أرسل رد 200 لتليجرام فوراً
   res.sendStatus(200);
 
+  const message = req.body?.message;
+  if (!message || !message.text) return;
+
+  const chatId = message.chat.id;
+  const userText = message.text;
+
   try {
-    const message = req.body?.message;
-    if (!message || !message.text) return;
+    // نداء مباشر لبسيط لـ Gemini
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const geminiRes = await axios.post(geminiUrl, {
+      contents: [{ parts: [{ text: userText }] }]
+    });
 
-    const chatId = message.chat.id;
-    const userText = message.text;
+    const reply = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || "لم يصل رد";
 
-    // طلب الاستجابة من Gemini API
-    const geminiRes = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        contents: [{ parts: [{ text: userText }] }]
-      }
-    );
-
-    const reply = geminiRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام رد من النموذج.';
-
-    // إرسال الرد إلى تيليجرام
+    // إرسال الرد لتليجرام
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: reply
     });
-
-  } catch (error) {
-    console.error('Error during webhook processing:', error.response?.data || error.message);
+  } catch (err) {
+    console.log('Error:', err.message);
   }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(process.env.PORT || 10000);
