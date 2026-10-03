@@ -52,7 +52,7 @@ async function getBase64FromTelegramFile(fileId) {
 
 // الويب هوك الخاص بتلقي التحديثات من تليجرام
 app.post('/', async (req, res) => {
-  res.sendStatus(200); // الرد السريع على تليجرام لتجنب المهلة
+  res.sendStatus(200);
 
   try {
     const message = req.body?.message;
