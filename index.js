@@ -7,10 +7,9 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-app.get('/', (req, res) => res.send('Bot is Live!'));
-
-app.post('/webhook', async (req, res) => {
-  res.sendStatus(200);
+// معالجة الرسائل القادمة من تليجرام
+async function handleUpdate(req, res) {
+  res.sendStatus(200); // رد سريع لتليجرام لتجنب إعادة الإرسال
 
   const message = req.body?.message;
   if (!message || !message.text) return;
@@ -24,17 +23,23 @@ app.post('/webhook', async (req, res) => {
       contents: [{ parts: [{ text: userText }] }]
     });
 
-    const reply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم الحصول على رد.';
+    const reply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام رد.';
 
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: reply
     });
   } catch (error) {
-    console.log('--- ERROR FROM GEMINI OR TELEGRAM ---');
-    console.log(error.response?.data || error.message);
+    console.error('Error:', error.response?.data || error.message);
   }
-});
+}
+
+// مسار UptimeRobot
+app.get('/', (req, res) => res.send('Bot is Live!'));
+
+// استقبال الرسائل سواء أرسلها تليجرام على / أو على /webhook
+app.post('/', handleUpdate);
+app.post('/webhook', handleUpdate);
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
