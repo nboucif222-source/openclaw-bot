@@ -115,28 +115,28 @@ app.all('*', async (req, res) => {
 
     let aiReply = "";
     try {
-      // قائمة النماذج بالتتابع (تبدأ بالنموذج المطلوب حالياً)
+      // استخدام النموذج المعتمد حديثاً gemini-3.8-flash مع وضع نماذج احتياطية
 const modelsToTry = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash'
+  'gemini-3.8-flash',
+  'gemini-3.7-flash',
+  'gemini-3.6-flash'
 ];
 
 let aiReply = "";
 
 for (const modelName of modelsToTry) {
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
   try {
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
     const response = await axios.post(geminiUrl, geminiPayload);
     aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (aiReply) break; // نجح الطلب
+    if (aiReply) break; // تم الحصول على الإجابة بنجاح
   } catch (err) {
     console.log(`Failed with model ${modelName}, trying next...`);
   }
 }
 
 if (!aiReply) {
-  aiReply = "⚠️ حدث خطأ أثناء تحليل الصورة، يرجى التأكد من المفتاح GEMINI_API_KEY أو إعادة المحاولة لاحقاً.";
+  aiReply = "⚠️ تعذر الاتصال بنماذج الذكاء الاصطناعي، يرجى التحقق من المفتاح GEMINI_API_KEY.";
 }
       const response = await axios.post(geminiUrl, geminiPayload);
       aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
