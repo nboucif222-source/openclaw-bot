@@ -115,7 +115,7 @@ app.all('*', async (req, res) => {
 
     let aiReply = "";
     try {
-      // قائمة بالنماذج المتاحة للتجربة بالتتابع في حال فشل أحدها
+      // قائمة النماذج بالتتابع (تبدأ بالنموذج المطلوب حالياً)
 const modelsToTry = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
@@ -129,14 +129,14 @@ for (const modelName of modelsToTry) {
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
     const response = await axios.post(geminiUrl, geminiPayload);
     aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (aiReply) break; // إذا نجح الطلب نخرج من الحلقة
+    if (aiReply) break; // نجح الطلب
   } catch (err) {
     console.log(`Failed with model ${modelName}, trying next...`);
   }
 }
 
 if (!aiReply) {
-  aiReply = "⚠ تعذر الاتصال بجميع نماذج الذكاء الاصطناعي. يرجى التأكد من صلاحية المفتاح GEMINI_API_KEY.";
+  aiReply = "⚠️ حدث خطأ أثناء تحليل الصورة، يرجى التأكد من المفتاح GEMINI_API_KEY أو إعادة المحاولة لاحقاً.";
 }
       const response = await axios.post(geminiUrl, geminiPayload);
       aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
