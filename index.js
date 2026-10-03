@@ -1,6 +1,5 @@
 const express = require('express');
 const axios = require('axios');
-const { GoogleGenAI } = require('@google/genai');
 
 const app = express();
 app.use(express.json());
@@ -8,32 +7,29 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// تهيئة مكتبة Google Gen AI الحديثة المتوافقة مع كافة أنواع المفاتيح
-const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-
-// 1. مسار الصفحة الرئيسية لـ UptimeRobot
+// مسار UptimeRobot
 app.get('/', (req, res) => {
   res.status(200).send('Bot is Live!');
 });
 
-// 2. مسار استقبال تحديثات تليجرام (يشمل / و /webhook)
+// معالجة تحديثات تليجرام
 async function handleUpdate(req, res) {
-  res.sendStatus(200); // إجابة سريعة لتليجرام لمنع الـ Timeout
+  res.sendStatus(200);
+
+  const message = req.body?.message;
+  if (!message || !message.text) return;
+
+  const chatId = message.chat.id;
+  const userText = message.text;
 
   try {
-    const message = req.body?.message;
-    if (!message || !message.text) return;
-
-    const chatId = message.chat.id;
-    const userText = message.text;
-
-    // استدعاء موديل gemini-2.5-flash باستخدام المكتبة الحديثة
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: userText,
+    // طلب مباشر عبر REST API مع الموديل المعتمد gemini-1.5-flash
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const response = await axios.post(url, {
+      contents: [{ parts: [{ text: userText }] }]
     });
 
-    const reply = response.text || 'لم أتمكن من الحصول على رد.';
+    const reply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام رد.';
 
     // إرسال الرد لتليجرام
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
@@ -41,7 +37,7 @@ async function handleUpdate(req, res) {
       text: reply
     });
   } catch (error) {
-    console.error('Error in handling update:', error.message || error);
+    console.error('Error details:', error.response?.data || error.message);
   }
 }
 
@@ -50,5 +46,5 @@ app.post('/webhook', handleUpdate);
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
