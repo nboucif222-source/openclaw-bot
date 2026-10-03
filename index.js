@@ -1,147 +1,112 @@
 const express = require('express');
 const axios = require('axios');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 10000;
+// 1. تهيئة مفاتيح البيئة
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// ذاكرة المؤقتة للمحادثات
-const memoryStore = {};
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-const SYSTEM_INSTRUCTION = "أنت مساعد ذكي ومتخصص في تحليل النصوص والصور بدقة عالية.";
+// 2. مسار الصفحة الرئيسية لخدمة UptimeRobot
+app.get('/', (req, res) => {
+  res.status(200).send('OpenClaw Bot is Live and Ready!');
+});
 
-// دالة إرسال الرسائل لتليجرام
-async function sendTelegramMessage(chatId, text) {
-  try {
-    const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-    await axios.post(url, {
-      chat_id: chatId,
-      text: text,
-      parse_mode: 'Markdown'
-    });
-  } catch (err) {
-    console.error('Telegram Send Error:', err?.response?.data || err.message);
-  }
-}
-
-// دالة جلب رابط الصورة من تليجرام وتحويلها إلى Base64
-async function getBase64FromTelegramFile(fileId) {
-  try {
-    const fileRes = await axios.get(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getFile?file_id=${fileId}`);
-    const filePath = fileRes.data?.result?.file_path;
-    if (!filePath) return null;
-
-    const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`;
-    const imageRes = await axios.get(fileUrl, { responseType: 'arraybuffer' });
-    const base64Data = Buffer.from(imageRes.data, 'binary').toString('base64');
-    
-    // تحديد نوع الصورة الممدود (mimeType)
-    let mimeType = 'image/jpeg';
-    if (filePath.endsWith('.png')) mimeType = 'image/png';
-    if (filePath.endsWith('.webp')) mimeType = 'image/webp';
-
-    return { base64Data, mimeType };
-  } catch (err) {
-    console.error('File Download Error:', err.message);
-    return null;
-  }
-}
-
-// الويب هوك الخاص بتلقي التحديثات من تليجرام
+// 3. مسار استلام تحديثات تليجرام (Webhook)
 app.post('/', async (req, res) => {
+  // الرد المباشر بـ 200 OK لتأكيد الاستلام لتليجرام
   res.sendStatus(200);
 
   try {
     const message = req.body?.message;
     if (!message) return;
 
-    const chatId = message.chat?.id;
-    const userText = message.text || message.caption || "";
-    const photoArray = message.photo;
+    const chatId = message.chat.id;
+    const userText = message.text || message.caption || '';
+    const photos = message.photo;
 
-    if (!chatId) return;
+    let responseText = '';
 
-    let currentParts = [];
+    // أ) في حال إرسال صورة
+    if (photos && photos.length > 0) {
+      const highestResPhoto = photos[photos.length - 1];
+      const fileBase64 = await getBase64FromTelegramFile(highestResPhoto.file_id);
 
-    // معالجة النص إذا وجد
-    if (userText) {
-      currentParts.push({ text: userText });
-    }
-
-    // معالجة الصورة إذا وجدت
-    if (photoArray && photoArray.length > 0) {
-      const largestPhoto = photoArray[photoArray.length - 1]; // اختيار أعلى جودة
-      const imageData = await getBase64FromTelegramFile(largestPhoto.file_id);
-      
-      if (imageData) {
-        currentParts.push({
+      if (fileBase64) {
+        const imagePart = {
           inlineData: {
-            mimeType: imageData.mimeType,
-            data: imageData.base64Data
+            data: fileBase64.data,
+            mimeType: fileBase64.mimeType
           }
-        });
+        };
+        const prompt = userText || 'اشرح لي هذه الصورة بالتفصيل.';
+        const result = await model.generateContent([prompt, imagePart]);
+        responseText = result.response.text();
+      } else {
+        responseText = 'حدث خطأ أثناء تعذّر تحميل الصورة من تليجرام.';
       }
+    } 
+    // ب) في حال إرسال نص فقط
+    else if (userText) {
+      const result = await model.generateContent(userText);
+      responseText = result.response.text();
     }
 
-    if (currentParts.length === 0) return;
-
-    // إدارة ذاكرة المحادثة لكل شات
-    if (!memoryStore[chatId]) memoryStore[chatId] = [];
-    let history = memoryStore[chatId];
-
-    const geminiPayload = {
-      systemInstruction: {
-        parts: [{ text: SYSTEM_INSTRUCTION }]
-      },
-      contents: [
-        ...history,
-        { role: 'user', parts: currentParts }
-      ]
-    };
-
-    let aiReply = "";
-    // النماذج المتاحة بالتتابع لتفادي أي إيقاف أو ضغط
-    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-
-    for (const modelName of modelsToTry) {
-      try {
-        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
-        const response = await axios.post(geminiUrl, geminiPayload);
-        aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (aiReply) break; // نجاح الاتصال
-      } catch (err) {
-        console.log(`Model ${modelName} failed or busy, trying next...`);
-      }
+    // إرسال الرد إلى مستخدم تليجرام
+    if (responseText) {
+      await sendTelegramMessage(chatId, responseText);
     }
-
-    if (!aiReply) {
-      aiReply = "عذراً، حدث خطأ أثناء معالجة الصورة أو النص. يرجى المحاولة مرة أخرى لاحقاً.";
-    }
-
-    // حفظ الإجابة في الذاكرة وإرسالها للمستخدم
-    if (aiReply) {
-      history.push({ role: 'user', parts: currentParts });
-      history.push({ role: 'model', parts: [{ text: aiReply }] });
-      
-      // الحفاظ على آخر 10 رسائل فقط للذاكرة
-      if (history.length > 10) history = history.slice(-10);
-      memoryStore[chatId] = history;
-
-      await sendTelegramMessage(chatId, aiReply);
-    }
-
   } catch (error) {
-    console.error('General Webhook Error:', error.message);
+    console.error('CRITICAL ERROR:', error.message || error);
   }
 });
 
-app.get('/', (req, res) => {
-  res.send('OpenClaw Bot is Live and Ready!');
-});
+// دالة جلب الصورة وتحويلها إلى Base64
+async function getBase64FromTelegramFile(fileId) {
+  try {
+    const fileRes = await axios.get(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getFile?file_id=${fileId}`);
+    const filePath = fileRes.data?.result?.file_path;
+    if (!filePath) return null;
 
+    const downloadUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${filePath}`;
+    const imageResponse = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
+    const base64Data = Buffer.from(imageResponse.data).toString('base64');
+
+    let mimeType = 'image/jpeg';
+    if (filePath.endsWith('.png')) mimeType = 'image/png';
+    if (filePath.endsWith('.webp')) mimeType = 'image/webp';
+
+    return { data: base64Data, mimeType };
+  } catch (err) {
+    console.error('File Download Error:', err.message);
+    return null;
+  }
+}
+
+// دالة إرسال الرسائل عبر تليجرام
+async function sendTelegramMessage(chatId, text) {
+  try {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: text,
+      parse_mode: 'Markdown'
+    });
+  } catch (err) {
+    // إعادة محاولة الإرسال بدون تنسيق Markdown في حال وجود رموز خاصة تسببت بخلل
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: text
+    }).catch(e => console.error('Send Message Failed:', e.message));
+  }
+}
+
+// تشغيل الخادم
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server is running on port ${PORT}`);
 });
