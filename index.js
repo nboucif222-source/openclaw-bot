@@ -2,24 +2,19 @@ const express = require('express');
 const axios = require('axios');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// ذاكرة مؤقتة في السيرفر
 const memoryStore = {};
 
 const SYSTEM_INSTRUCTION = `
-أنت النواة الذكية الفائقة "OpenClaw Ultra AI Agent" - نظام ذكاء اصطناعي سيادي مستمر التعلم.
-
-تتكون بنيتك المعرفية من عدة محركات خبرة متخصصة:
-1. خبير صناعة المحتوى والفيديو والتصميم.
-2. خبير التجارة الإلكترونية واكتشاف المنتجات الرابحة.
-3. خبير برمجيات SaaS والمشاريع الرقمية والبرمجة.
-4. خبير الأسواق المالية والتداول وقراءة الشارتات.
-
-قواعد العمل: تقديم إجابات عميقة، مباشرة، ومستندة لأدوات البحث والتحليل المتقدم.
+أنت المساعد الذكي الفائق "OpenClaw Ultra AI Agent".
+مهامك:
+1. الإجابة الفورية والتحليل الدقيق لكافة الأسئلة والنصوص والصور الواردة من المستخدم دون الحاجة لضغط أي أزرار.
+2. عند استقبال صورة (شارت تداول، واجهة Binance، تصميم، أو مستند)، قم بتحليلها فوراً وإعطاء تفاصيل وشرح شامل ومفيد للمستخدم.
+3. كن ودوداً، محترفاً، وإجاباتك واضحة ومنسقة باستعمال Markdown.
 `;
 
 const MAIN_KEYBOARD = {
@@ -43,8 +38,9 @@ app.get('/', (req, res) => {
   res.send('OpenClaw Super AI Agent is Active!');
 });
 
-app.post('/telegram-webhook', async (req, res) => {
-  res.sendStatus(200);
+app.all('*', async (req, res) => {
+  if (req.method !== 'POST') return res.status(200).send('OK');
+  res.status(200).send('OK');
 
   try {
     if (req.body?.callback_query) {
@@ -60,18 +56,13 @@ app.post('/telegram-webhook', async (req, res) => {
 
     if (userText === '/clear') {
       delete memoryStore[chatId];
-      await sendTelegramMessage(chatId, "🧹 تم مسح الذاكرة المؤقتة بالكامل!", MAIN_KEYBOARD);
+      await sendTelegramMessage(chatId, "🧹 تم مسح الذاكرة المؤقتة بالكامل!");
       return;
     }
 
     if (userText === '/start') {
       const welcomeMsg = "🔥 **أهلاً بك في OpenClaw Super-Agent!**\n\n" +
-                         "مساعدك الفائق المخصص للسيطرة على كافة المجالات:\n\n" +
-                         "🛒 التجارة الإلكترونية والمنتجات الرابحة\n" +
-                         "🎬 صناعة المحتوى وسيناريوهات الفيديو\n" +
-                         "💻 هندسة البرمجيات وSaaS\n" +
-                         "📈 التداول وقراءة الشارتات\n\n" +
-                         "أرسل سؤالك، صورتك، أو ملفك مباشرة للتنفيذ!";
+                         "أنا جاهز لإجابة جميع أسئلتك وتحليل أي صورة أو شارت ترسله لي فوراً!";
       await sendTelegramMessage(chatId, welcomeMsg, MAIN_KEYBOARD);
       return;
     }
@@ -79,43 +70,47 @@ app.post('/telegram-webhook', async (req, res) => {
     if (userText.startsWith('/image')) {
       const prompt = userText.replace('/image', '').trim();
       if (!prompt) {
-        await sendTelegramMessage(chatId, "⚠️ يرجى كتابة وصف التصميم المطلوب بعد الأمر `/image`.");
+        await sendTelegramMessage(chatId, "⚠️ يرجى كتابة وصف التصميم بعد `/image`.");
         return;
       }
-      await sendTelegramMessage(chatId, "🎨 جاري إنشاء التصميم بأعلى دقة...");
+      await sendTelegramMessage(chatId, "🎨 جاري إنشاء التصميم...");
       await generateAndSendImage(chatId, prompt);
       return;
     }
 
-    if (!memoryStore[chatId]) memoryStore[chatId] = [];
-    let history = memoryStore[chatId];
-
     let currentParts = [];
-    if (userText) currentParts.push({ text: userText });
 
+    // معالجة الصور المرسلة من المستخدم (شارتات، Binance، إلخ)
     if (message.photo) {
       const photo = message.photo[message.photo.length - 1];
       const fileData = await getTelegramFileBase64(photo.file_id);
       if (fileData) {
         currentParts.push({
-          inlineData: { mimeType: "image/jpeg", data: fileData }
+          inline_data: {
+            mime_type: "image/jpeg",
+            data: fileData
+          }
         });
-        if (!userText) currentParts.push({ text: "قم بتحليل هذه الصورة/الشارت بأسلوب خبير واستخرج كافة التفاصيل." });
+        const promptText = userText || (message.caption ? message.caption : "قم بتحليل هذه الصورة/الشارت الصادرة عن تطبيق التداول أو العملات واشرح المحتوى بوضوح.");
+        currentParts.push({ text: promptText });
       }
+    } else if (userText) {
+      currentParts.push({ text: userText });
     }
 
     if (currentParts.length === 0) return;
 
-    history.push({ role: 'user', parts: currentParts });
-    if (history.length > 15) history = history.slice(-15);
+    if (!memoryStore[chatId]) memoryStore[chatId] = [];
+    let history = memoryStore[chatId];
 
     const geminiPayload = {
+      systemInstruction: {
+        parts: [{ text: SYSTEM_INSTRUCTION }]
+      },
       contents: [
-        { role: 'user', parts: [{ text: `[SYSTEM INSTRUCTION]: ${SYSTEM_INSTRUCTION}` }] },
-        { role: 'model', parts: [{ text: "فهمت النطاق الكامل. أنا جاهز كمساعد فائق للمعالجة." }] },
-        ...history
-      ],
-      tools: [{ googleSearch: {} }]
+        ...history,
+        { role: 'user', parts: currentParts }
+      ]
     };
 
     let aiReply = "";
@@ -124,20 +119,21 @@ app.post('/telegram-webhook', async (req, res) => {
       const response = await axios.post(geminiUrl, geminiPayload);
       aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
     } catch (apiError) {
-      delete geminiPayload.tools;
-      const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-      const fallbackResponse = await axios.post(fallbackUrl, geminiPayload);
-      aiReply = fallbackResponse.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      console.error('Gemini API Error:', apiError?.response?.data || apiError.message);
+      aiReply = "⚠️️ حدث خطأ أثناء تحليل الصورة/الطلب، الرجاء إعادة المحاولة بنفس الصورة أو التأكد من سلامة المفتاح GEMINI_API_KEY.";
     }
 
     if (aiReply) {
+      history.push({ role: 'user', parts: currentParts });
       history.push({ role: 'model', parts: [{ text: aiReply }] });
+      if (history.length > 10) history = history.slice(-10);
       memoryStore[chatId] = history;
-      await sendTelegramMessage(chatId, aiReply, MAIN_KEYBOARD);
+
+      await sendTelegramMessage(chatId, aiReply);
     }
 
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('General Error:', error.message);
   }
 });
 
@@ -145,21 +141,23 @@ async function handleCallbackQuery(query) {
   const chatId = String(query.message.chat.id);
   const data = query.data;
 
-  await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/answerCallbackQuery`, { callback_query_id: query.id });
+  try {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/answerCallbackQuery`, { callback_query_id: query.id });
+  } catch (e) {}
 
   if (data === "btn_ecom") {
-    await sendTelegramMessage(chatId, "🛒 **قسم التجارة الإلكترونية:**\nأرسل اسم منتج أو رابط متجر منافس للحصول على دراسة كاملة!");
+    await sendTelegramMessage(chatId, "🛒 **قسم التجارة الإلكترونية:**\nأرسل سؤالك أو اسم منتجك فوراً.");
   } else if (data === "btn_video") {
-    await sendTelegramMessage(chatId, "🎬 **صناعة المحتوى:**\nاكتب فكرة الفيديو وسأقوم بصياغة سيناريو احترافي + Prompts!");
+    await sendTelegramMessage(chatId, "🎬 **صناعة المحتوى:**\nاكتب فكرة الفيديو وسأصيغ السيناريو.");
   } else if (data === "btn_trading") {
-    await sendTelegramMessage(chatId, "📈 **قسم التداول:**\nأرسل لقطة شاشة (Screenshot) للشارت الفني لمعاينته وتحليله!");
+    await sendTelegramMessage(chatId, "📈 **قسم التداول:**\nأرسل لي لقطة الشاشة (Binance / TradingView) وسأقوم بتحليلها فوراً!");
   } else if (data === "btn_saas") {
-    await sendTelegramMessage(chatId, "💻 **قسم SaaS والبرمجة:**\nاكتب فكرة مشروعك أو المشكلة البرمجية للحصول على حل تقني متكامل!");
+    await sendTelegramMessage(chatId, "💻 **قسم SaaS والبرمجة:**\nاكتب مشكلتك أو استفسارك البرمجي.");
   } else if (data === "btn_img_gen") {
-    await sendTelegramMessage(chatId, "🎨 **توليد الصور:**\nاكتب الأمر `/image` متبوعاً بالوصف.");
+    await sendTelegramMessage(chatId, "🎨 **توليد الصور:**\nاكتب `/image` متبوعة بالوصف.");
   } else if (data === "btn_clear") {
     delete memoryStore[chatId];
-    await sendTelegramMessage(chatId, "🧹 تم مسح الذاكرة!", MAIN_KEYBOARD);
+    await sendTelegramMessage(chatId, "🧹 تم مسح الذاكرة!");
   }
 }
 
@@ -173,6 +171,7 @@ async function getTelegramFileBase64(fileId) {
     const imageRes = await axios.get(downloadUrl, { responseType: 'arraybuffer' });
     return Buffer.from(imageRes.data).toString('base64');
   } catch (err) {
+    console.error('Error fetching file from Telegram:', err.message);
     return null;
   }
 }
