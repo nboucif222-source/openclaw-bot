@@ -111,16 +111,24 @@ app.all('*', async (req, res) => {
         ...history,
         { role: 'user', parts: currentParts }
       ]
-    };
-      let aiReply = "";
-    try {
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`;
-      const response = await axios.post(geminiUrl, geminiPayload);
-      aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    } catch (apiError) {
-      console.error('Gemini API Error:', apiError?.response?.data || apiError.message);
+    };let aiReply = "";
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
+    for (const modelName of modelsToTry) {
+      try {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+        const response = await axios.post(geminiUrl, geminiPayload);
+        aiReply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (aiReply) break;
+      } catch (err) {
+        console.log(`Model ${modelName} failed or busy, trying next...`);
+      }
+    }
+
+    if (!aiReply) {
       aiReply = "عذراً، حدث خطأ أثناء معالجة الصورة أو النص. يرجى المحاولة مرة أخرى.";
     }
+
     if (aiReply) {
       history.push({ role: 'user', parts: currentParts });
       history.push({ role: 'model', parts: [{ text: aiReply }] });
@@ -129,10 +137,11 @@ app.all('*', async (req, res) => {
 
       await sendTelegramMessage(chatId, aiReply);
     }
-
   } catch (error) {
     console.error('General Error:', error.message);
   }
+});
+      
 });
 
 async function handleCallbackQuery(query) {
