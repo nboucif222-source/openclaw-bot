@@ -9,7 +9,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 app.get('/', (req, res) => res.send('Docker Webhook Bot is Live!'));
 
-// إضافة توجيهات النظام المباشرة بدون تعديل هيكل الكود
 const SYSTEM_INSTRUCTION = `أنت مساعد ذكي ومباشر. أجب على سؤال المستخدم فوراً وبشكل دقيق ومباشر دون مقدمات أو إطالة. إذا طلب منك المستخدم تنفيذ مهمة معينة، قم بتنفيذها فوراً وبشكل كامل دون إعطاء نصائح جانبية أو خطط عمل غير مطلوبة.`;
 
 async function fetchGeminiResponse(modelName, userText) {
@@ -24,7 +23,8 @@ async function fetchGeminiResponse(modelName, userText) {
 }
 
 async function callGeminiSmart(userText) {
-  const models = ['gemini-3.8-flash', 'gemini-2.5-flash'];
+  // قائمة بالنماذج المتاحة للتنقل بينها تلقائياً عند انتهاء quota
+  const models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.8-flash'];
   
   for (const model of models) {
     try {
@@ -49,7 +49,7 @@ app.post('/webhook', async (req, res) => {
 
   try {
     const replyText = await callGeminiSmart(userText);
-    const reply = replyText || 'السيرفر مشغول حالياً بطلبات كثيرة، يرجى المحاولة بعد لحظات.';
+    const reply = replyText || 'السيرفر مشغول حالياً أو تم تجاوز الحصة اليومية، يرجى المحاولة بعد قليل.';
 
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
