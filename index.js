@@ -9,27 +9,33 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 app.get('/', (req, res) => res.send('Docker Webhook Bot is Live!'));
 
-// دالة لإعادة المحاولة عند حدوث خطأ 503
-async function callGeminiWithRetry(userText, retries = 3, delay = 2000) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`;
+// إضافة توجيهات النظام المباشرة بدون تعديل هيكل الكود
+const SYSTEM_INSTRUCTION = `أنت مساعد ذكي ومباشر. أجب على سؤال المستخدم فوراً وبشكل دقيق ومباشر دون مقدمات أو إطالة. إذا طلب منك المستخدم تنفيذ مهمة معينة، قم بتنفيذها فوراً وبشكل كامل دون إعطاء نصائح جانبية أو خطط عمل غير مطلوبة.`;
+
+async function fetchGeminiResponse(modelName, userText) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
+  const response = await axios.post(url, {
+    system_instruction: {
+      parts: [{ text: SYSTEM_INSTRUCTION }]
+    },
+    contents: [{ parts: [{ text: userText }] }]
+  }, { timeout: 10000 });
+  return response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+}
+
+async function callGeminiSmart(userText) {
+  const models = ['gemini-3.8-flash', 'gemini-2.5-flash'];
   
-  for (let i = 0; i < retries; i++) {
+  for (const model of models) {
     try {
-      const response = await axios.post(url, {
-        contents: [{ parts: [{ text: userText }] }]
-      });
-      return response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      console.log(`Trying model: ${model}...`);
+      const reply = await fetchGeminiResponse(model, userText);
+      if (reply) return reply;
     } catch (error) {
-      const status = error.response?.status;
-      if (status === 503 && i < retries - 1) {
-        console.log(`Gemini API busy (503). Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`);
-        await new Promise(res => setTimeout(res, delay));
-        delay *= 2; // مضاعفة وقت الانتظار تلقائياً
-      } else {
-        throw error;
-      }
+      console.log(`Model ${model} failed with status: ${error.response?.status || error.message}`);
     }
   }
+  return null;
 }
 
 app.post('/webhook', async (req, res) => {
@@ -42,19 +48,15 @@ app.post('/webhook', async (req, res) => {
   const userText = message.text;
 
   try {
-    const replyText = await callGeminiWithRetry(userText);
-    const reply = replyText || 'لم يتم استلام رد من النموذج.';
+    const replyText = await callGeminiSmart(userText);
+    const reply = replyText || 'السيرفر مشغول حالياً بطلبات كثيرة، يرجى المحاولة بعد لحظات.';
 
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: reply
     });
   } catch (error) {
-    console.error('Error:', error.response?.data || error.message);
-    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-      chat_id: chatId,
-      text: 'السيرفر مشغول حالياً بطلبات كثيرة، يرجى المحاولة بعد لحظات.'
-    });
+    console.error('Error sending Telegram message:', error.message);
   }
 });
 
