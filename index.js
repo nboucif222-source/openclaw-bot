@@ -8,11 +8,60 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-app.get('/', (req, res) => res.send('OpenClaw Super-Bot is Online & Live!'));
+// كائن لتخزين سجل المحادثات لكل مستخدم بشكل مستقل
+const chatHistories = {};
 
-const SYSTEM_INSTRUCTION = `أنت OpenClaw، مساعد ذكي خبير ومباشر في تليجرام. أجب على سؤال المستخدم فوراً وبشكل دقيق ومختصر دون إطالة أو مقدمات.`;
+app.get('/', (req, res) => res.send('OpenClaw Super-Bot with Memory is Online!'));
 
-// معالجة رسائل تليجرام
+const SYSTEM_INSTRUCTION = `أنت OpenClaw، مساعد أعمال ذكي وخبير في تليجرام. أجب على أسئلة المستخدم بوضوح ودقة بناءً على سياق المحادثة السابقة.`;
+
+async function callGeminiWithHistory(chatId, userText) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+  // إنشاء سجل للمستخدم إذا لم يكن موجوداً
+  if (!chatHistories[chatId]) {
+    chatHistories[chatId] = [];
+  }
+
+  // إضافة رسالة المستخدم الجديدة إلى الذاكرة
+  chatHistories[chatId].push({
+    role: 'user',
+    parts: [{ text: userText }]
+  });
+
+  // الاحتفاظ بأخر 10 رسائل فقط في الذاكرة لتفادي حجم الحمولات الكبير
+  if (chatHistories[chatId].length > 10) {
+    chatHistories[chatId] = chatHistories[chatId].slice(-10);
+  }
+
+  try {
+    const response = await axios.post(url, {
+      system_instruction: {
+        parts: [{ text: SYSTEM_INSTRUCTION }]
+      },
+      contents: chatHistories[chatId]
+    }, { timeout: 15000 });
+
+    const replyText = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (replyText) {
+      // إضافة رد الذكاء الاصطناعي إلى الذاكرة أيضاً
+      chatHistories[chatId].push({
+        role: 'model',
+        parts: [{ text: replyText }]
+      });
+    }
+
+    return replyText;
+  } catch (error) {
+    console.error('Gemini API Error:', error.response?.data || error.message);
+    // في حال حدوث خطأ، نتراجع عن إضافة الرسالة الأخيرة حتى لا يختل التسلسل
+    chatHistories[chatId].pop();
+    throw error;
+  }
+}
+
+// معالجة استقبال رسائل تليجرام
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
@@ -22,39 +71,29 @@ app.post('/webhook', async (req, res) => {
   const chatId = message.chat.id;
   const userText = message.text;
 
+  // إمكانية مسح الذاكرة عند إرسال أمر /reset
+  if (userText === '/reset' || userText === '/clear') {
+    chatHistories[chatId] = [];
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: 'تم مسح ذاكرة المحادثة بنجاح! كيف يمكنني مساعدتك الآن؟'
+    });
+    return;
+  }
+
   try {
-    // إرسال الطلب المباشر للنموذج المعتمد gemini-3.8-flash
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`;
-
-    const response = await axios.post(url, {
-      system_instruction: {
-        parts: [{ text: SYSTEM_INSTRUCTION }]
-      },
-      contents: [{ parts: [{ text: userText }] }],
-      tools: [
-        { google_search: {} } // تفعيل أداة البحث المباشر
-      ]
-    }, { timeout: 15000 });
-
-    const reply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام إجابة من النموذج.';
+    const reply = await callGeminiWithHistory(chatId, userText) || 'لم يتم استلام إجابة.';
 
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: reply
     });
   } catch (error) {
-    console.error('API Error Details:', error.response?.data || error.message);
-    
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
-      text: 'عذراً، حدث خطأ أثناء معالجة الطلب. يرجى المحاولة مرة أخرى.'
+      text: 'عذراً، حدث خطأ مؤقت أثناء معالجة الطلب.'
     });
   }
-});
-
-// جدولة مهمة تلقائية يومية
-cron.schedule('0 9 * * *', () => {
-  console.log('OpenClaw Daily Task Triggered');
 });
 
 const PORT = process.env.PORT || 10000;
