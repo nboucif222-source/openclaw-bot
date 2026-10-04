@@ -40,7 +40,7 @@ app.post('/webhook', async (req, res) => {
     console.error('Error:', error.response?.data || error.message);
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
-      text: 'السيرفر مشغول حالياً أو تم تجاوز الحصة، يرجى المحاولة بعد قليل.'
+      text: 'حدث خطأ في معالجة الطلب، يرجى المحاولة بعد قليل.'
     });
   }
 });
