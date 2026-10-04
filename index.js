@@ -11,33 +11,6 @@ app.get('/', (req, res) => res.send('Docker Webhook Bot is Live!'));
 
 const SYSTEM_INSTRUCTION = `أنت مساعد ذكي ومباشر. أجب على سؤال المستخدم فوراً وبشكل دقيق ومباشر دون مقدمات أو إطالة. إذا طلب منك المستخدم تنفيذ مهمة معينة، قم بتنفيذها فوراً وبشكل كامل دون إعطاء نصائح جانبية أو خطط عمل غير مطلوبة.`;
 
-async function fetchGeminiResponse(modelName, userText) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
-  const response = await axios.post(url, {
-    system_instruction: {
-      parts: [{ text: SYSTEM_INSTRUCTION }]
-    },
-    contents: [{ parts: [{ text: userText }] }]
-  }, { timeout: 10000 });
-  return response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-}
-
-async function callGeminiSmart(userText) {
-  // قائمة بالنماذج المتاحة للتنقل بينها تلقائياً عند انتهاء quota
-  const models = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-3.8-flash'];
-  
-  for (const model of models) {
-    try {
-      console.log(`Trying model: ${model}...`);
-      const reply = await fetchGeminiResponse(model, userText);
-      if (reply) return reply;
-    } catch (error) {
-      console.log(`Model ${model} failed with status: ${error.response?.status || error.message}`);
-    }
-  }
-  return null;
-}
-
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
@@ -48,15 +21,27 @@ app.post('/webhook', async (req, res) => {
   const userText = message.text;
 
   try {
-    const replyText = await callGeminiSmart(userText);
-    const reply = replyText || 'السيرفر مشغول حالياً أو تم تجاوز الحصة اليومية، يرجى المحاولة بعد قليل.';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`;
+    
+    const response = await axios.post(url, {
+      system_instruction: {
+        parts: [{ text: SYSTEM_INSTRUCTION }]
+      },
+      contents: [{ parts: [{ text: userText }] }]
+    }, { timeout: 12000 });
+
+    const reply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام رد.';
 
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: reply
     });
   } catch (error) {
-    console.error('Error sending Telegram message:', error.message);
+    console.error('Error:', error.response?.data || error.message);
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: 'السيرفر مشغول حالياً أو تم تجاوز الحصة، يرجى المحاولة بعد قليل.'
+    });
   }
 });
 
