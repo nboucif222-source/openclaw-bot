@@ -9,14 +9,17 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// تهيئة مكتبة Gemini الرسمية
+// تهيئة مكتبة Gemini بالنموذج المعتمد والمستقر
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ 
-  model: "gemini-1.5-flash",
-  systemInstruction: "أنت OpenClaw، مساعد ذكي خبير في إدارة الأعمال والتجارة الإلكترونية وصناعة المحتوى. أجب فوراً بدقة وبشكل مباشر."
+  model: "gemini-2.5-flash",
+  tools: [{ googleSearch: {} }] // تفعيل أداة البحث المباشر في جوجل
 });
 
-app.get('/', (req, res) => res.send('OpenClaw Super-Bot is Online & Ready!'));
+const SYSTEM_INSTRUCTION = `أنت OpenClaw، مساعد ذكي خبير ومباشر في تليجرام. 
+أجب على سؤال المستخدم فوراً وبشكل دقيق ومختصر دون إطالة أو مقدمات.`;
+
+app.get('/', (req, res) => res.send('OpenClaw Super-Bot is Online!'));
 
 // معالجة رسائل تليجرام
 app.post('/webhook', async (req, res) => {
@@ -29,25 +32,31 @@ app.post('/webhook', async (req, res) => {
   const userText = message.text;
 
   try {
-    const result = await model.generateContent(userText);
-    const reply = result.response.text() || 'تمت المعالجة بدون نص.';
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: userText }] }],
+      systemInstruction: SYSTEM_INSTRUCTION
+    });
+
+    const reply = result.response.text() || 'لم أتمكن من العثور على إجابة مناسبة.';
 
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: reply
     });
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('Error Details:', error?.message || error);
+    
+    // في حال تعذر نموذج 2.5 نستخدم الطلب المباشر الاحتياطي
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
-      text: 'حدث خطأ أثناء المعالجة، يرجى المحاولة لاحقاً.'
+      text: 'عذراً، حدث خطأ مؤقت أثناء معالجة الطلب. يرجى المحاولة مرة أخرى.'
     });
   }
 });
 
-// جدولة مهمة تلقائية (مثال: تنبيه يومي الساعة 9 صباحاً)
+// جدولة مهمة تلقائية يومية
 cron.schedule('0 9 * * *', () => {
-  console.log('OpenClaw Cron Task Running...');
+  console.log('OpenClaw Daily Task Triggered');
 });
 
 const PORT = process.env.PORT || 10000;
