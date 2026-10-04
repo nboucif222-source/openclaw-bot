@@ -1,5 +1,7 @@
 const express = require('express');
 const axios = require('axios');
+const cron = require('node-cron');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 const app = express();
 app.use(express.json());
@@ -7,10 +9,16 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-app.get('/', (req, res) => res.send('Docker Webhook Bot is Live!'));
+// تهيئة مكتبة Gemini الرسمية
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ 
+  model: "gemini-1.5-flash",
+  systemInstruction: "أنت OpenClaw، مساعد ذكي خبير في إدارة الأعمال والتجارة الإلكترونية وصناعة المحتوى. أجب فوراً بدقة وبشكل مباشر."
+});
 
-const SYSTEM_INSTRUCTION = `أنت مساعد ذكي ومباشر. أجب على سؤال المستخدم فوراً وبشكل دقيق ومباشر دون مقدمات أو إطالة. إذا طلب منك المستخدم تنفيذ مهمة معينة، قم بتنفيذها فوراً وبشكل كامل دون إعطاء نصائح جانبية أو خطط عمل غير مطلوبة.`;
+app.get('/', (req, res) => res.send('OpenClaw Super-Bot is Online & Ready!'));
 
+// معالجة رسائل تليجرام
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
@@ -21,28 +29,25 @@ app.post('/webhook', async (req, res) => {
   const userText = message.text;
 
   try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${GEMINI_API_KEY}`;
-    
-    const response = await axios.post(url, {
-      system_instruction: {
-        parts: [{ text: SYSTEM_INSTRUCTION }]
-      },
-      contents: [{ parts: [{ text: userText }] }]
-    }, { timeout: 12000 });
-
-    const reply = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'لم يتم استلام رد.';
+    const result = await model.generateContent(userText);
+    const reply = result.response.text() || 'تمت المعالجة بدون نص.';
 
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
       text: reply
     });
   } catch (error) {
-    console.error('Error:', error.response?.data || error.message);
+    console.error('Error:', error.message);
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
       chat_id: chatId,
-      text: 'حدث خطأ في معالجة الطلب، يرجى المحاولة بعد قليل.'
+      text: 'حدث خطأ أثناء المعالجة، يرجى المحاولة لاحقاً.'
     });
   }
+});
+
+// جدولة مهمة تلقائية (مثال: تنبيه يومي الساعة 9 صباحاً)
+cron.schedule('0 9 * * *', () => {
+  console.log('OpenClaw Cron Task Running...');
 });
 
 const PORT = process.env.PORT || 10000;
