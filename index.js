@@ -7,10 +7,10 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
 
-// ذاكرة المحادثة لكل شات
+// ذاكرة المحادثة لكل مستخدم
 const chatHistories = {};
 
-app.get('/', (req, res) => res.send('OpenClaw Bot on OpenRouter is Live!'));
+app.get('/', (req, res) => res.send('OpenClaw Bot via OpenRouter is Live!'));
 
 const SYSTEM_INSTRUCTION = `أنت OpenClaw، مساعد أعمال ذكي وخبير في تليجرام. أجب على أسئلة المستخدم بوضوح ودقة بناءً على سياق المحادثة السابقة.`;
 
@@ -19,13 +19,13 @@ async function callOpenRouter(chatId, userText) {
     chatHistories[chatId] = [];
   }
 
-  // إضافة رسالة المستخدم
+  // إضافة رسالة المستخدم الجديدة
   chatHistories[chatId].push({
     role: 'user',
     content: userText
   });
 
-  // الاحتفاظ بأخر 10 رسائل فقط
+  // الاحتفاظ بأحدث 10 رسائل فقط للحد من استهلاك الذاكرة
   if (chatHistories[chatId].length > 10) {
     chatHistories[chatId] = chatHistories[chatId].slice(-10);
   }
@@ -39,7 +39,7 @@ async function callOpenRouter(chatId, userText) {
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'google/gemini-2.0-flash-lite-001', // نموذج مجاني وسريع جداً عبر OpenRouter
+        model: 'google/gemini-2.5-flash:free', // اسم النموذج المجاني والمستقر على OpenRouter
         messages: messagesPayload
       },
       {
@@ -63,7 +63,7 @@ async function callOpenRouter(chatId, userText) {
     return replyText;
   } catch (error) {
     console.error('OpenRouter Error:', error.response?.data || error.message);
-    chatHistories[chatId].pop(); // تراجع عن إضافة الرسالة في حال الفشل
+    chatHistories[chatId].pop(); // التراجع عن إدراج الرسالة عند الفشل
     throw error;
   }
 }
@@ -77,6 +77,7 @@ app.post('/webhook', async (req, res) => {
   const chatId = message.chat.id;
   const userText = message.text;
 
+  // مسح ذاكرة المحادثة عند طلب /reset
   if (userText === '/reset' || userText === '/clear') {
     chatHistories[chatId] = [];
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
