@@ -1,16 +1,13 @@
 {
-  "name": "openclaw-bot",
+  "name": "telegram-bot",
   "version": "1.0.0",
-  "description": "Autonomous AI Employee Bot",
+  "description": "Telegram Bot with OpenRouter",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "axios": "^1.6.8",
-    "@google/generative-ai": "^0.11.0",
-    "node-cron": "^3.0.3",
-    "dotenv": "^16.4.5"
+    "telegraf": "^4.16.3",
+    "axios": "^1.6.8"
   }
 }
