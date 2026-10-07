@@ -39,8 +39,8 @@ async function callOpenRouter(chatId, userText) {
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        // نموذج مجاني، قوي، وسريع جداً متاح دائماً على OpenRouter
-        model: 'meta-llama/llama-3.3-70b-instruct:free',
+        // استخدام الموجه المجاني التلقائي لاختيار أي نموذج مجاني متاح بدون خطأ 404
+        model: 'openrouter/free',
         messages: messagesPayload
       },
       {
