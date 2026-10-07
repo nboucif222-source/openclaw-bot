@@ -2,7 +2,7 @@ const { Telegraf } = require('telegraf');
 const axios = require('axios');
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const OPENROUTER_API_KEY = process.env.GEMINI_API_KEY || process.env.OPENROUTER_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
 
 bot.start((ctx) => ctx.reply('مرحباً بك! أنا بوت ذكاء اصطناعي يعمل عبر OpenRouter. كيف يمكنني مساعدتك اليوم؟'));
 
@@ -13,7 +13,7 @@ bot.on('text', async (ctx) => {
         const response = await axios.post(
             'https://openrouter.ai/api/v1/chat/completions',
             {
-                model: 'google/gemini-2.0-flash-exp:free', // يمكنك تغيير النموذج إذا أردت
+                model: 'google/gemini-2.0-flash-lite-001',
                 messages: [
                     {
                         role: 'system',
