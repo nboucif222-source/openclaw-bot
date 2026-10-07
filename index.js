@@ -1,46 +1,105 @@
-const { Telegraf } = require('telegraf');
+const express = require('express');
 const axios = require('axios');
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
+const app = express();
+app.use(express.json());
+
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
 
-bot.start((ctx) => ctx.reply('مرحباً بك! أنا بوت ذكاء اصطناعي يعمل عبر OpenRouter. كيف يمكنني مساعدتك اليوم؟'));
+// ذاكرة المحادثة لكل شات
+const chatHistories = {};
 
-bot.on('text', async (ctx) => {
-    try {
-        await ctx.sendChatAction('typing');
-        
-        const response = await axios.post(
-            'https://openrouter.ai/api/v1/chat/completions',
-            {
-                model: 'google/gemini-2.0-flash-lite-001',
-                messages: [
-                    {
-                        role: 'system',
-                        content: 'أنت مساعد ذكي ومفيد تتحدث باللغة العربية بأسلوب واضح ومباشر.'
-                    },
-                    {
-                        role: 'user',
-                        content: ctx.message.text
-                    }
-                ]
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
+app.get('/', (req, res) => res.send('OpenClaw Bot on OpenRouter is Live!'));
 
-        const replyMessage = response.data.choices[0].message.content;
-        await ctx.reply(replyMessage);
+const SYSTEM_INSTRUCTION = `أنت OpenClaw، مساعد أعمال ذكي وخبير في تليجرام. أجب على أسئلة المستخدم بوضوح ودقة بناءً على سياق المحادثة السابقة.`;
 
-    } catch (error) {
-        console.error('Error with OpenRouter API:', error?.response?.data || error.message);
-        await ctx.reply('عذراً، حدث خطأ أثناء معالجة الطلب. يرجى المحاولة لاحقاً.');
+async function callOpenRouter(chatId, userText) {
+  if (!chatHistories[chatId]) {
+    chatHistories[chatId] = [];
+  }
+
+  // إضافة رسالة المستخدم
+  chatHistories[chatId].push({
+    role: 'user',
+    content: userText
+  });
+
+  // الاحتفاظ بأخر 10 رسائل فقط
+  if (chatHistories[chatId].length > 10) {
+    chatHistories[chatId] = chatHistories[chatId].slice(-10);
+  }
+
+  const messagesPayload = [
+    { role: 'system', content: SYSTEM_INSTRUCTION },
+    ...chatHistories[chatId]
+  ];
+
+  try {
+    const response = await axios.post(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        model: 'google/gemini-2.0-flash-lite-001', // نموذج مجاني وسريع جداً عبر OpenRouter
+        messages: messagesPayload
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+
+    const replyText = response.data?.choices?.[0]?.message?.content;
+
+    if (replyText) {
+      chatHistories[chatId].push({
+        role: 'assistant',
+        content: replyText
+      });
     }
+
+    return replyText;
+  } catch (error) {
+    console.error('OpenRouter Error:', error.response?.data || error.message);
+    chatHistories[chatId].pop(); // تراجع عن إضافة الرسالة في حال الفشل
+    throw error;
+  }
+}
+
+app.post('/webhook', async (req, res) => {
+  res.sendStatus(200);
+
+  const message = req.body?.message;
+  if (!message || !message.text) return;
+
+  const chatId = message.chat.id;
+  const userText = message.text;
+
+  if (userText === '/reset' || userText === '/clear') {
+    chatHistories[chatId] = [];
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: 'تم مسح ذاكرة المحادثة بنجاح!'
+    });
+    return;
+  }
+
+  try {
+    const reply = await callOpenRouter(chatId, userText) || 'لم يتم استلام إجابة.';
+
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: reply
+    });
+  } catch (error) {
+    await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+      chat_id: chatId,
+      text: 'عذراً، حدث خطأ مؤقت أثناء معالجة الطلب. يرجى المحاولة لاحقاً.'
+    });
+  }
 });
 
-bot.launch();
-console.log('Bot is running with OpenRouter...');
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
