@@ -7,25 +7,25 @@ app.use(express.json());
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY;
 
-// ذاكرة المحادثة لكل مستخدم
+// ذاكرة المحادثة لجميع المستخدمين
 const chatHistories = {};
 
-app.get('/', (req, res) => res.send('OpenClaw Bot via OpenRouter is Live!'));
+app.get('/', (req, res) => res.send('OpenClaw Bot on OpenRouter is Live!'));
 
-const SYSTEM_INSTRUCTION = `أنت OpenClaw، مساعد أعمال ذكي وخبير في تليجرام. أجب على أسئلة المستخدم بوضوح ودقة بناءً على سياق المحادثة السابقة.`;
+const SYSTEM_INSTRUCTION = `أنت OpenClaw، مساعد أعمال ذكي وخبير في تليجرام. أجب على أسئلة المستخدم بوضوح ودقة باللغة العربية.`;
 
 async function callOpenRouter(chatId, userText) {
   if (!chatHistories[chatId]) {
     chatHistories[chatId] = [];
   }
 
-  // إضافة رسالة المستخدم الجديدة
+  // إضافة رسالة المستخدم
   chatHistories[chatId].push({
     role: 'user',
     content: userText
   });
 
-  // الاحتفاظ بأحدث 10 رسائل فقط للحد من استهلاك الذاكرة
+  // الاحتفاظ بأحدث 10 رسائل فقط
   if (chatHistories[chatId].length > 10) {
     chatHistories[chatId] = chatHistories[chatId].slice(-10);
   }
@@ -39,7 +39,8 @@ async function callOpenRouter(chatId, userText) {
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'google/gemini-2.5-flash:free', // اسم النموذج المجاني والمستقر على OpenRouter
+        // نموذج مجاني، قوي، وسريع جداً متاح دائماً على OpenRouter
+        model: 'meta-llama/llama-3.3-70b-instruct:free',
         messages: messagesPayload
       },
       {
@@ -47,7 +48,7 @@ async function callOpenRouter(chatId, userText) {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json'
         },
-        timeout: 15000
+        timeout: 20000
       }
     );
 
@@ -63,7 +64,7 @@ async function callOpenRouter(chatId, userText) {
     return replyText;
   } catch (error) {
     console.error('OpenRouter Error:', error.response?.data || error.message);
-    chatHistories[chatId].pop(); // التراجع عن إدراج الرسالة عند الفشل
+    chatHistories[chatId].pop(); // التراجع عن الرسالة في حال الخطأ
     throw error;
   }
 }
@@ -77,7 +78,7 @@ app.post('/webhook', async (req, res) => {
   const chatId = message.chat.id;
   const userText = message.text;
 
-  // مسح ذاكرة المحادثة عند طلب /reset
+  // إمكانية مسح السجل بالأمر /reset
   if (userText === '/reset' || userText === '/clear') {
     chatHistories[chatId] = [];
     await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
