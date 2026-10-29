@@ -1,8 +1,6 @@
-
 {
   "name": "openclaw-bot",
   "version": "1.0.0",
-  "description": "OpenClaw Telegram Bot with Gemini API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
