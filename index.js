@@ -1,56 +1,48 @@
-const express = require('express');
-const axios = require('axios');
+const { Telegraf } = require('telegraf');
+const { GoogleGenAI } = require('@google/genai');
 
-const app = express();
-app.use(express.json());
+// قراءة المتغيرات البيئية من Render
+const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
+// رقم الـ Chat ID الخاص بك حصرياً للحماية
+const ALLOWED_CHAT_ID = 1824869362;
 
-// دالة إرسال الطلبات إلى n8n
-async function triggerN8nAgent(userText, chatId) {
-  try {
-    const response = await axios.post(N8N_WEBHOOK_URL, {
-      chat_id: chatId,
-      command: userText,
-      timestamp: new Date().toISOString()
-    }, { timeout: 15000 });
+bot.on('text', async (ctx) => {
+    const chatId = ctx.chat.id;
 
-    return response.data;
-  } catch (error) {
-    console.error('n8n Trigger Error:', error.message);
-    throw error;
-  }
-}
-
-app.post('/webhook', async (req, res) => {
-  res.sendStatus(200);
-
-  const message = req.body?.message;
-  if (!message || !message.text) return;
-
-  const chatId = message.chat.id;
-  const userText = message.text.trim();
-
-  // توجيه الأوامر التنفيذية إلى n8n عند تبديل الوضع أو البدء بكلمة أمر
-  if (userText.startsWith('/agent') || userText.startsWith('نفذ:')) {
-    try {
-      await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-        chat_id: chatId,
-        text: '⏳ جاري إرسال الأمر إلى محرك n8n للتنفيذ...'
-      });
-
-      await triggerN8nAgent(userText, chatId);
-
-    } catch (err) {
-      await axios.post(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-        chat_id: chatId,
-        text: '❌ تعذر الاتصال بـ n8n. تأكد من إعداد N8N_WEBHOOK_URL في Render.'
-      });
+    // التحقق الأمني: تجاهل أي شخص غيرك
+    if (chatId !== ALLOWED_CHAT_ID) {
+        console.log(`Unauthorized access attempt from: ${chatId}`);
+        return;
     }
-    return;
-  }
+
+    const userMessage = ctx.message.text;
+    console.log(`Received message from owner: ${userMessage}`);
+
+    try {
+        // إرسال الرسالة إلى نموذج Gemini (استخدام gemini-2.5-flash أو حسب المتاح لديك)
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: userMessage,
+            config: {
+                systemInstruction: "أنت مساعد ذكي ومستقل (Master Agent) تعمل كمرشد ومستشار شخصي لإدارة المشاريع وتحليل الأسواق والنيشات، وخاصة السوق الجزائري."
+            }
+        });
+
+        const replyText = response.text || "عذراً، لم أستطع توليد إجابة.";
+        await ctx.reply(replyText);
+
+    } catch (error) {
+        console.error("Error communicating with Gemini API:", error);
+        await ctx.reply("حدث خطأ أثناء معالجة طلبك عبر الذكاء الاصطناعي.");
+    }
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// بدء تشغيل البوت
+bot.launch();
+console.log('OpenClaw Node.js Bot with Gemini is running...');
+
+// إيقاف آمن
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
