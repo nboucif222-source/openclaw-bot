@@ -2,10 +2,10 @@ FROM node:18-slim
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
+# تثبيت الحزم المطلوبة مباشرة لمنع أي خطأ في package.json
+RUN npm install telegraf@4.16.3 @google/genai@0.1.1
 
 COPY . .
 
 EXPOSE 10000
-CMD ["npm", "start"]
+CMD ["node", "index.js"]
