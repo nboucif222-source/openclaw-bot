@@ -1,13 +1,14 @@
+
 {
-  "name": "telegram-bot",
+  "name": "openclaw-bot",
   "version": "1.0.0",
-  "description": "OpenClaw Bot via OpenRouter",
+  "description": "OpenClaw Telegram Bot with Gemini API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "axios": "^1.6.8"
+    "@google/genai": "^0.1.1",
+    "telegraf": "^4.16.3"
   }
 }
