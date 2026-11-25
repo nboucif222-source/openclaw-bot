@@ -7,25 +7,27 @@ const app = express();
 app.use(express.json({ limit: '1mb' }));
 
 const PORT = process.env.PORT || 3000;
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const ALLOWED_CHAT_ID = process.env.TELEGRAM_CHAT_ID; // اختياري: لحصر البوت بحسابك فقط
 
-// تحميل مهارة الإشراف (Skill) إن وجدت
-let supervisorSkill = '';
+// 1. قراءة ملف skills.md من جذر المستودع
+let skillsContent = '';
 try {
-  const skillPath = path.join(__dirname, 'skills', 'supervisor.md');
+  const skillPath = path.join(__dirname, 'skills.md');
   if (fs.existsSync(skillPath)) {
-    supervisorSkill = fs.readFileSync(skillPath, 'utf8');
+    skillsContent = fs.readFileSync(skillPath, 'utf8');
   }
 } catch (err) {
-  console.warn('No skill file loaded, using default prompt.');
+  console.warn('Could not load skills.md:', err.message);
 }
 
 const SYSTEM_PROMPT = `
 أنت OpenClaw، الوكيل المشرف الذكي (Supervisor AI).
-أسلوبك: عملي، دقيق، ومباشر بدون حشو.
-${supervisorSkill}
+أسلوبك: عملي، دقيق، ومباشر باللغة العربية.
+${skillsContent}
 `.trim();
 
-// قائمة مزودي الذكاء الاصطناعي المجانيين بالترتيب (Primary -> Fallbacks)
+// 2. قائمة مزودي الذكاء الاصطناعي المجانيين (Primary -> Fallbacks)
 const LLM_PROVIDERS = [
   {
     name: 'Google Gemini',
@@ -47,7 +49,7 @@ const LLM_PROVIDERS = [
   }
 ];
 
-// دالة الاتصال الذكية مع التبديل التلقائي عند الفشل (Auto-Fallback)
+// 3. محرك التفكير مع التبديل التلقائي عند الفشل
 async function askSupervisor(userMessage) {
   const errors = [];
 
@@ -55,10 +57,9 @@ async function askSupervisor(userMessage) {
     if (!provider.key) continue;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000); // مهلة 25 ثانية كحد أقصى لكل مزود
+    const timeout = setTimeout(() => controller.abort(), 25000);
 
     try {
-      console.log(`[OpenClaw] Trying ${provider.name}...`);
       const response = await fetch(provider.url, {
         method: 'POST',
         headers: {
@@ -81,60 +82,72 @@ async function askSupervisor(userMessage) {
 
       if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errText.slice(0, 120)}`);
+        throw new Error(`HTTP ${response.status}: ${errText.slice(0, 100)}`);
       }
 
       const data = await response.json();
       const reply = data?.choices?.[0]?.message?.content;
 
       if (reply) {
-        console.log(`[OpenClaw] Success via ${provider.name}`);
-        return {
-          provider: provider.name,
-          model: provider.model,
-          reply: reply.trim()
-        };
+        return { provider: provider.name, reply: reply.trim() };
       }
     } catch (error) {
       clearTimeout(timeout);
-      console.error(`[OpenClaw] ${provider.name} failed:`, error.message);
+      console.error(`[${provider.name}] failed:`, error.message);
       errors.push(`${provider.name}: ${error.message}`);
     }
   }
 
-  throw new Error(`All LLM providers failed. Details: ${errors.join(' | ')}`);
+  throw new Error(`فشلت جميع النماذج: ${errors.join(' | ')}`);
 }
 
-// 1. مسار الفحص الصحي لـ Render (يمنع توقف الخدمة)
+// 4. دالة إرسال الرد إلى تيليغرام
+async function sendTelegramMessage(chatId, text) {
+  if (!TELEGRAM_TOKEN) return;
+  await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: text
+    })
+  });
+}
+
+// 5. مسار استقبال رسائل تيليغرام (Telegram Webhook)
+app.post('/telegram', async (req, res) => {
+  // نرد بـ 200 فوراً لتيليغرام حتى لا يعيد إرسال الرسالة عند بطء الذكاء الاصطناعي
+  res.sendStatus(200);
+
+  const message = req.body?.message;
+  if (!message || !message.text) return;
+
+  const chatId = String(message.chat.id);
+  const userText = message.text;
+
+  // حماية اختيارية: الرد على حسابك فقط إذا ضبطت TELEGRAM_CHAT_ID
+  if (ALLOWED_CHAT_ID && chatId !== String(ALLOWED_CHAT_ID)) {
+    return;
+  }
+
+  try {
+    const result = await askSupervisor(userText);
+    await sendTelegramMessage(chatId, `${result.reply}\n\n⚡ [${result.provider}]`);
+  } catch (err) {
+    await sendTelegramMessage(chatId, `⚠️ حدث خطأ أثناء المعالجة:\n${err.message}`);
+  }
+});
+
+// 6. مسار الفحص الصحي لـ Render
 app.get('/', (req, res) => {
   res.status(200).json({
     status: 'online',
     agent: 'OpenClaw Supervisor',
-    providers_configured: LLM_PROVIDERS.filter(p => Boolean(p.key)).map(p => p.name)
+    telegram_ready: Boolean(TELEGRAM_TOKEN),
+    providers: LLM_PROVIDERS.filter(p => Boolean(p.key)).map(p => p.name)
   });
 });
 
-// 2. مسار المحادثة وتنفيذ الأوامر
-app.post('/chat', async (req, res) => {
-  try {
-    const message = req.body?.message;
-    if (!message) {
-      return res.status(400).json({ error: 'يرجى إرسال حقل message في الطلب.' });
-    }
-
-    const result = await askSupervisor(message);
-    res.status(200).json({
-      status: 'success',
-      ...result
-    });
-  } catch (err) {
-    res.status(502).json({
-      status: 'error',
-      message: err.message
-    });
-  }
-});
-
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 OpenClaw Supervisor is running on port ${PORT}`);
+  console.log(`🚀 OpenClaw Supervisor running on port ${PORT}`);
 });
